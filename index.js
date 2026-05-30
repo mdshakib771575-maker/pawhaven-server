@@ -11,6 +11,8 @@ app.use(express.json())
 
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const console = require("node:console");
+const { verify } = require("node:crypto");
+const { createRemoteJWKSet, jwtVerify } = require("jose-cjs");
 dotenv.config();
 const uri = process.env.MONGODB_URI;
 
@@ -22,6 +24,28 @@ const client = new MongoClient(uri, {
     deprecationErrors: true,
   }
 });
+// jwt
+const JWKS =createRemoteJWKSet(new URL("http://localhost:3000/api/auth/jwks"))
+const verifyToken = async (req,res,next)=>{
+   const authHeader = req?.headers.authorization;
+   if(!authHeader){
+    res.status(401).json({message:"unauthorise"})
+   }
+   const token = authHeader.split(' ')[1]
+   if(!token){
+     res.status(401).json({message:"unauthorise"})
+   }
+
+   try{
+    const {payload} = await jwtVerify(token,JWKS)
+    console.log(payload)
+    next()
+
+  }catch(error){
+    return res.status(403).json({message:"Forbidden"})
+  };
+
+}
 
 async function run() {
   try {
@@ -29,18 +53,29 @@ async function run() {
 
     const db = client.db("pawhaven");
     const pawhavenCullaction = db.collection('pets');
+    const AdoptionCullaction = db.collection('adoptions');
 
 
     app.get("/pets", async (req, res) => {
       const result = await pawhavenCullaction.find().toArray()
       res.json(result)
     });
-
-    app.get('/pets/:id', async (req, res) => {
+  //midlewar
+    app.get('/pets/:id',verifyToken, async (req, res) => {
       const id = req.params.id;
       const result = await pawhavenCullaction.findOne({ _id: new ObjectId(id) })
       res.json(result);
     });
+    
+    app.post('/pets',verifyToken, async (req, res) => {
+      const petData = req.body;
+      console.log(petData)
+    
+      const result = await pawhavenCullaction.insertOne(petData);
+      res.json(result)
+    });
+
+
        app.patch('/pets/:id', async (req, res) => {
       const id = req.params.id;
       const updatedData = req.body;
@@ -49,20 +84,40 @@ async function run() {
       res.json(result)
     })
      
-       app.delete('/pets/:id', async (req, res) => {
+       app.delete('/pets/:id',verifyToken, async (req, res) => {
       const id = req.params.id;
       const result = await pawhavenCullaction.deleteOne({ _id: new ObjectId(id)});
       res.json(result)
-    })
-
-  
-    app.post('/pets', async (req, res) => {
-      const petData = req.body;
-      console.log(petData)
-      console.log(petData)
-      const result = await pawhavenCullaction.insertOne(petData);
+    });
+    
+       app.delete('/adoptions/:id',verifyToken,async (req, res) => {
+      const id = req.params.id;
+      const result = await AdoptionCullaction.deleteOne({ _id: new ObjectId(id)});
       res.json(result)
     });
+
+
+    
+    app.get("/adoptions", async (req, res) => {
+      const result = await AdoptionCullaction.find().toArray()
+      res.json(result);
+    });
+
+     app.get('/adoptions/:userId', async (req, res) => {
+      const userId = req.params.userId;
+      const result = await AdoptionCullaction.find({userId:userId}).toArray()
+      res.json(result);
+    });
+// middlewar
+    app.post('/adoptions',verifyToken, async (req, res) => {
+  const adoptionData = req.body;
+  console.log(adoptionData)
+ 
+  const result = await AdoptionCullaction.insertOne(adoptionData);
+  res.json(result)
+});
+
+
 
  
 
